@@ -54,9 +54,9 @@ SHOTS = [
     ("B", (0.50, 0.42, 0.62, 0), (0.50, 0.42, 0.42, 0), 2, True),       # LYXOR brodé
     ("F", (0.12, 0.52, 0.42, 0), (0.12, 0.42, 0.42, 0), 2, False),      # manche gauche, couture
     ("B", (0.50, 0.30, 0.52, 0), (0.50, 0.30, 0.37, 0), 2, True),       # ornement supérieur
-    ("F", (0.46, 0.13, 0.55, 0), (0.62, 0.13, 0.46, 0), 1, False),      # col côtelé
-    ("B", (0.27, 0.46, 0.42, 0), (0.32, 0.52, 0.36, 0), 1, True),       # volute gauche
-    ("B", (0.72, 0.64, 0.40, 0), (0.66, 0.58, 0.35, 0), 1, True),       # volute basse droite
+    ("M", (0.64, 0.37, 0.70, 0), (0.64, 0.37, 0.66, 0), 1, False),      # mannequin, profil (plan vidéo)
+    ("M", (0.62, 0.40, 0.62, 0), (0.62, 0.42, 0.54, 0), 1, True),       # mannequin, gros plan torse/épaule
+    ("M", (0.63, 0.38, 0.66, 0), (0.63, 0.36, 0.60, 0), 1, False),      # mannequin, plan large
     ("B", (0.22, 0.665, 0.42, 0), (0.78, 0.665, 0.42, 0), 1, False),    # LUXURY STREETWEAR
     ("F", (0.67, 0.30, 0.84, 3), (0.67, 0.30, 0.60, 0), 1, True),       # écusson, plan moyen
     ("B", (0.50, 0.57, 0.52, 0), (0.50, 0.52, 0.40, 0), 1, True),       # ornement inférieur
@@ -74,6 +74,7 @@ SHOT_SECONDS = [1.0 if d == 2 else 0.5 for (_, _, _, d, _) in [(s[0], s[1], s[2]
 assert abs(sum(SHOT_SECONDS) - 15.0) < 1e-6, sum(SHOT_SECONDS)
 SEQ_T0 = 7.0
 SHOT_STARTS = np.cumsum([0] + SHOT_SECONDS[:-1]) + SEQ_T0
+MODEL_RANGE = {8: (0, 13), 9: (14, 27), 10: (28, 40)}
 DIP_BEFORE = {4, 12}   # fondus noirs rapides avant ces plans (index)
 
 # ------------------------------------------------------------------ utilitaires
@@ -129,6 +130,12 @@ def init():
     lg = Image.open("assets/logo_lyxor_clean.png").convert("RGB")
     _LOGO = lg
     init_fx()
+    from types import SimpleNamespace
+    global _MSRC
+    _MSRC = []
+    for i in range(1, 42):
+        im = Image.open(f'build/model/m_{i:03d}.png').convert('RGB').filter(ImageFilter.UnsharpMask(2, 60, 2))
+        _MSRC.append(SimpleNamespace(img=im, w=576, h=1008, off=0))
 
 
 def logo_layer(width_px, cy, scale=1.0, alpha=1.0, sweep=None):
@@ -327,11 +334,18 @@ def render_frame(fi):
         tl = t - SHOT_STARTS[k]
         u = ease_io(tl / dur) * 0.55 + (tl / dur) * 0.45   # mouvement continu, départ/arrivée doux
         punch = 0.07 * math.exp(-tl * 22.0)                 # petit « coup » de zoom à chaque coupe
-        img = crop_view(_SRCS[sname], a0, b0, u, punch)
+        if sname == 'M':
+            f0, f1 = MODEL_RANGE[k]
+            src = _MSRC[int(round(f0 + (f1 - f0) * min(tl / dur, 0.999)))]
+        else:
+            src = _SRCS[sname]
+        img = crop_view(src, a0, b0, u, punch)
         # étalonnage : noirs profonds, contraste doux, léger voile chaud sur les hautes lumières
         img = (img / 255.0)
         img = np.clip((img - 0.015) * 1.06, 0, 1) ** 1.08
         img = img * np.array([1.02, 1.0, 0.96], np.float32)
+        if sname == 'M':
+            img = img * 0.88
         if sweep_on:
             # balayage de lumière de studio, en diagonale, sur l'ensemble du plan
             pos = -0.4 + 1.8 * (tl / dur)
