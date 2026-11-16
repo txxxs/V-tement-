@@ -60,11 +60,11 @@ SHOTS = [
     ("B", (0.22, 0.665, 0.42, 0), (0.78, 0.665, 0.42, 0), 1, False),    # LUXURY STREETWEAR
     ("F", (0.67, 0.30, 0.84, 3), (0.67, 0.30, 0.60, 0), 1, True),       # écusson, plan moyen
     ("B", (0.50, 0.57, 0.52, 0), (0.50, 0.52, 0.40, 0), 1, True),       # ornement inférieur
-    ("F", (0.50, 0.50, 1.00, -3), (0.50, 0.52, 0.90, 0), 1, False),     # silhouette, contre-plongée
+    ("P", (0.50, 0.50, 1.00, 0), (0.52, 0.46, 0.86, 0), 1, False),      # mannequin avec chaîne, plan serré
     ("B", (0.75, 0.40, 0.42, 0), (0.70, 0.35, 0.37, 0), 1, False),      # volute droite
     ("B", (0.50, 0.08, 0.58, 0), (0.50, 0.11, 0.46, 0), 1, False),      # encolure arrière
-    ("F", (0.90, 0.50, 0.42, 0), (0.88, 0.52, 0.40, 0), 1, False),      # manche droite
-    ("B", (0.10, 0.36, 0.42, 0), (0.14, 0.42, 0.42, 0), 1, False),      # épaule / manche dos
+    ("P", (0.56, 0.46, 0.52, 0), (0.56, 0.45, 0.40, 0), 1, True),       # écusson porté, gros plan
+    ("P", (0.42, 0.33, 0.62, 0), (0.46, 0.33, 0.50, 0), 1, False),      # col et chaîne dorée
     ("B", (0.30, 0.78, 0.40, 0), (0.34, 0.72, 0.36, 0), 1, True),       # volute basse gauche
     ("B", (0.50, 0.20, 0.68, 0), (0.50, 0.20, 0.52, 0), 1, True),       # BEYOND LIMITS serré
     ("B", (0.50, 0.50, 1.00, 0), (0.50, 0.46, 0.88, 0), 1, True),       # dos entier final
@@ -126,7 +126,7 @@ def init():
     _VIG = (1.0 - 0.38 * np.clip(r - 0.35, 0, 1) ** 1.6)[..., None].astype(np.float32)
     rng = np.random.default_rng(3)
     _GRAIN = [(rng.standard_normal((H // 2, W // 2)).astype(np.float32)) for _ in range(5)]
-    _SRCS = {"F": Src("assets/tshirt_face.jpg"), "B": Src("assets/tshirt_dos.jpg")}
+    _SRCS = {"F": Src("assets/tshirt_face.jpg"), "B": Src("assets/tshirt_dos.jpg"), "P": Src("assets/mannequin_chaine_recadre.jpg")}
     lg = Image.open("assets/logo_lyxor_clean.png").convert("RGB")
     _LOGO = lg
     init_fx()
@@ -228,7 +228,7 @@ def init_fx():
     _GEO["along"] = along / H
     _GEO["dist"] = dist / W
     # rayons autour du logo final
-    cx, cy = W / 2, 1817.0
+    cx, cy = W / 2, 1773.0
     ang = np.arctan2(py - cy, px - cx)
     rad = np.hypot(px - cx, (py - cy) * 1.0) / W
     _GEO["ang"], _GEO["rad"] = ang, rad
@@ -380,26 +380,26 @@ def render_frame(fi):
         group_cy = H // 2
         logo_w = 1500
         lh = int(_LOGO.size[1] * logo_w / _LOGO.size[0])
-        gap = 150
-        txt_h = 56
-        total = lh + gap + txt_h
+        gap = 130
+        total = lh + gap + 64 + 64 + 40
         top = group_cy - total / 2
         logo_cy = top + lh / 2
-        txt_cy = top + lh + gap + txt_h / 2
+        sl_cy = top + lh + gap + 32
+        ou_cy = sl_cy + 32 + 64 + 20
         frame += ray_layer(tt_)
         la = ease_io((tt_ - 0.4) / 1.2)
         if la > 0.001:
-            sw = (tt_ - 2.9) / 1.4 if 2.9 <= tt_ <= 4.3 else None
-            glow_pulse = 1.0 + 0.35 * math.sin(max(0, (tt_ - 2.9) / 1.4) * math.pi) if 2.9 <= tt_ <= 4.3 else 1.0
+            sw = (tt_ - 3.1) / 1.4 if 3.1 <= tt_ <= 4.5 else None
+            glow_pulse = 1.0 + 0.35 * math.sin(max(0, (tt_ - 3.1) / 1.4) * math.pi) if 3.1 <= tt_ <= 4.5 else 1.0
             sc = 0.96 + 0.05 * ease_io((tt_ - 0.4) / 4.6)
             lay, _ = logo_layer(logo_w, logo_cy, sc, la, sw)
             frame += glow(lay, 46, 0.30 * glow_pulse)
-        ta = (tt_ - 1.6) / 1.1
+        ta = (tt_ - 1.5) / 1.1
         if ta > 0:
-            a = ease_io(ta)
-            track = 0.62 - 0.17 * ease_io(ta)
-            blur = 10 * (1 - ease_io(ta))
-            frame += spaced_text("OUVERTURE PROCHAINEMENT", 56, track, a, blur, y_center=int(txt_cy), color=(255, 255, 255))
+            frame += spaced_text("PORTEZ VOTRE IDENTITÉ.", 64, 0.62 - 0.17 * ease_io(ta), ease_io(ta), 10 * (1 - ease_io(ta)), y_center=int(sl_cy))
+        tb = (tt_ - 2.5) / 1.0
+        if tb > 0:
+            frame += spaced_text("OUVERTURE PROCHAINEMENT", 40, 0.62 - 0.12 * ease_io(tb), ease_io(tb) * 0.9, 8 * (1 - ease_io(tb)), y_center=int(ou_cy))
         master *= 1 - ease_io((tt_ - 3.7) / 1.3)
 
     # grain fin de pellicule (très léger) + masterisation
