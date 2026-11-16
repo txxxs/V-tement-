@@ -56,7 +56,7 @@ SHOTS = [
     ("B", (0.50, 0.30, 0.52, 0), (0.50, 0.30, 0.37, 0), 2, True),       # ornement supérieur
     ("F", (0.46, 0.13, 0.55, 0), (0.62, 0.13, 0.46, 0), 1, False),      # col côtelé
     ("B", (0.27, 0.46, 0.42, 0), (0.32, 0.52, 0.36, 0), 1, True),       # volute gauche
-    ("F", (0.35, 0.72, 0.42, 0), (0.42, 0.62, 0.42, 0), 1, False),      # matière du coton
+    ("B", (0.72, 0.64, 0.40, 0), (0.66, 0.58, 0.35, 0), 1, True),       # volute basse droite
     ("B", (0.22, 0.665, 0.42, 0), (0.78, 0.665, 0.42, 0), 1, False),    # LUXURY STREETWEAR
     ("F", (0.67, 0.30, 0.84, 3), (0.67, 0.30, 0.60, 0), 1, True),       # écusson, plan moyen
     ("B", (0.50, 0.57, 0.52, 0), (0.50, 0.52, 0.40, 0), 1, True),       # ornement inférieur
@@ -65,7 +65,7 @@ SHOTS = [
     ("B", (0.50, 0.08, 0.58, 0), (0.50, 0.11, 0.46, 0), 1, False),      # encolure arrière
     ("F", (0.90, 0.50, 0.42, 0), (0.88, 0.52, 0.40, 0), 1, False),      # manche droite
     ("B", (0.10, 0.36, 0.42, 0), (0.14, 0.42, 0.42, 0), 1, False),      # épaule / manche dos
-    ("F", (0.50, 0.97, 0.55, 0), (0.50, 0.88, 0.52, 0), 1, False),      # ourlet
+    ("B", (0.30, 0.78, 0.40, 0), (0.34, 0.72, 0.36, 0), 1, True),       # volute basse gauche
     ("B", (0.50, 0.20, 0.68, 0), (0.50, 0.20, 0.52, 0), 1, True),       # BEYOND LIMITS serré
     ("B", (0.50, 0.50, 1.00, 0), (0.50, 0.46, 0.88, 0), 1, True),       # dos entier final
 ]
@@ -93,6 +93,7 @@ def crop_view(src, a, b, u, punch=0.0):
     ww = a[2] + (b[2] - a[2]) * u
     rot = a[3] + (b[3] - a[3]) * u
     ww = ww / (1 + punch)
+    fx = min(max(fx, ww / 2 + 0.012), 1 - ww / 2 - 0.012)   # reste dans la photo (pas de bord visible)
     cx = fx * src.w
     cy = src.off + fy * src.h * 1.0 + 0.0
     # src.w/h sont déjà x2 ; fy est relatif à la hauteur de la photo
@@ -302,7 +303,7 @@ def render_frame(fi):
     g = np.roll(np.roll(g, ox, 1), oy, 0)
     g = np.asarray(Image.fromarray(g).resize((W, H), Image.BILINEAR), np.float32)
     lumn = np.clip(frame.max(2, keepdims=True) / 255.0, 0, 1)
-    frame = frame + g[..., None] * (2.4 + 3.0 * lumn)
+    frame = frame + g[..., None] * (1.6 + 2.2 * lumn)
     frame = np.clip(frame * master, 0, 255).astype(np.uint8)
     return frame.tobytes()
 
@@ -316,7 +317,7 @@ def main():
     end = int(sys.argv[2]) if len(sys.argv) > 2 else NF
     out = sys.argv[3] if len(sys.argv) > 3 else "build/lyxor_video_noaudio.mp4"
     cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
-           "-s", f"{W}x{H}", "-r", str(FPS), "-i", "-", "-c:v", "libx264", "-preset", "slow", "-crf", "14",
+           "-s", f"{W}x{H}", "-r", str(FPS), "-i", "-", "-c:v", "libx264", "-preset", "medium", "-crf", "19",
            "-pix_fmt", "yuv420p", "-profile:v", "high", "-level", "5.1", "-colorspace", "bt709",
            "-color_primaries", "bt709", "-color_trc", "bt709", "-movflags", "+faststart", out]
     p = subprocess.Popen(cmd, stdin=subprocess.PIPE)
