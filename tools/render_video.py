@@ -255,11 +255,11 @@ def render_frame(fi):
             img = img + band * (0.25 + 1.4 * lum) * (GOLD / 255.0)[None, None, :] * 0.8
         frame = np.clip(img, 0, 1) * 255.0 * _VIG
         # flash lumineux doré sur la coupe
-        if tl < 0.30:
-            fl = 0.55 * math.exp(-tl * 17.0)
+        if tl < 0.25:
+            fl = 0.24 * math.exp(-tl * 24.0)
             if k == 0:
                 fl *= 0.5
-            frame = frame + fl * GOLD[None, None, :] * 0.9
+            frame = frame + fl * (frame.max(2, keepdims=True) * 0.6 + 70.0) * (GOLD / 255.0)[None, None, :]
         # fondus noirs
         if k in DIP_BEFORE:
             # entrée en fondu depuis le noir (4 premières images)
