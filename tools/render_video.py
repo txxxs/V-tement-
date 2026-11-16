@@ -128,6 +128,7 @@ def init():
     _SRCS = {"F": Src("assets/tshirt_face.jpg"), "B": Src("assets/tshirt_dos.jpg")}
     lg = Image.open("assets/logo_lyxor_clean.png").convert("RGB")
     _LOGO = lg
+    init_fx()
 
 
 def logo_layer(width_px, cy, scale=1.0, alpha=1.0, sweep=None):
@@ -200,6 +201,92 @@ def hairline(progress, alpha):
     return glow(full, 36, 1.6)
 
 
+
+# ------------------------------------------------------------------ effets de lumière (inspirés de la référence)
+SW, SH = W // 4, H // 4
+_GEO = {}
+_PART = None
+
+
+def init_fx():
+    global _PART
+    yy, xx = np.mgrid[0:SH, 0:SW].astype(np.float32)
+    px, py = xx * 4.0, yy * 4.0
+    # faisceau : axe partant du haut-droite vers le bas-gauche
+    x0, y0 = W * 0.98, -H * 0.04
+    dx, dy = -0.55, 1.0
+    n = math.hypot(dx, dy); dx, dy = dx / n, dy / n
+    along = ((px - x0) * dx + (py - y0) * dy)
+    dist = np.abs((px - x0) * dy - (py - y0) * dx)
+    _GEO["along"] = along / H
+    _GEO["dist"] = dist / W
+    # rayons autour du logo final
+    cx, cy = W / 2, 1817.0
+    ang = np.arctan2(py - cy, px - cx)
+    rad = np.hypot(px - cx, (py - cy) * 1.0) / W
+    _GEO["ang"], _GEO["rad"] = ang, rad
+    rng = np.random.default_rng(11)
+    N = 1300
+    _PART = dict(x=rng.random(N), y=rng.random(N), vx=rng.normal(0, 0.004, N), vy=rng.uniform(0.004, 0.022, N),
+                 ph=rng.uniform(0, 6.28, N), tw=rng.uniform(1.5, 4.5, N), sz=rng.uniform(0.6, 1.4, N))
+
+
+def shaft_mask(spread, length_fall=1.15):
+    al, di = _GEO["along"], _GEO["dist"]
+    w = spread * (0.35 + 0.9 * np.clip(al, 0, 1.4))
+    m = np.exp(-(di / np.maximum(w, 1e-3)) ** 2) * np.clip(1 - al / length_fall, 0, 1) ** 1.2 * (al > -0.05)
+    return m.astype(np.float32)
+
+
+def up(mask_small):
+    im = Image.fromarray(mask_small.astype(np.float32), mode="F").resize((W, H), Image.BILINEAR)
+    return np.asarray(im, np.float32)
+
+
+def dust_layer(t, mask_small, amp):
+    """Fines particules dorées qui flottent ; leur éclat suit le masque (faisceau) fourni."""
+    P = _PART
+    x = (P["x"] + P["vx"] * t + 0.01 * np.sin(t * 0.8 + P["ph"])) % 1.0
+    y = (P["y"] + P["vy"] * t) % 1.0
+    mx = np.clip((x * SW).astype(int), 0, SW - 1)
+    my = np.clip((y * SH).astype(int), 0, SH - 1)
+    b = mask_small[my, mx] * (0.45 + 0.55 * np.sin(t * P["tw"] + P["ph"]) ** 2) * P["sz"] * amp
+    hw, hh = W // 2, H // 2
+    canvas = np.zeros((hh, hw), np.float32)
+    ix = np.clip((x * hw).astype(int), 0, hw - 1)
+    iy = np.clip((y * hh).astype(int), 0, hh - 1)
+    np.add.at(canvas, (iy, ix), b)
+    from scipy.ndimage import gaussian_filter
+    big = Image.fromarray(gaussian_filter(canvas, 0.9), mode="F").resize((W, H), Image.BILINEAR)
+    return np.asarray(big, np.float32) * 5.0
+
+
+def light_shaft(t):
+    a = ease_io((t - 0.5) / 2.0) * (1 - ease_io((t - 3.4) / 0.8))
+    if a <= 0.001:
+        return np.zeros((H, W, 3), np.float32)
+    spread = 0.04 + 0.05 * ease_io((t - 0.5) / 2.5)
+    m = shaft_mask(spread)
+    beam = up(m * a * 0.60)
+    dust = dust_layer(t, m, a * 255.0 * 0.9)
+    return (beam[..., None] * GOLD[None, None, :] * 0.78) + dust[..., None] * GOLD[None, None, :] / 255.0 * 1.0
+
+
+def ray_layer(tt_):
+    a = ease_io((tt_ - 0.5) / 1.8)
+    if a <= 0.001:
+        return np.zeros((H, W, 3), np.float32)
+    ang, rad = _GEO["ang"], _GEO["rad"]
+    ph = tt_ * 0.35
+    r1 = (0.5 + 0.5 * np.sin(ang * 9 + ph)) ** 5
+    r2 = (0.5 + 0.5 * np.sin(ang * 17 - ph * 1.3 + 1.7)) ** 6
+    r3 = (0.5 + 0.5 * np.sin(ang * 31 + ph * 0.6 + 0.4)) ** 8
+    rays = (0.55 * r1 + 0.35 * r2 + 0.30 * r3)
+    fall = np.exp(-rad * 3.4) * (1 - np.exp(-rad * 40))
+    m = (rays * fall).astype(np.float32) * a * 0.55
+    return up(m)[..., None] * GOLD[None, None, :] * 0.8
+
+
 # ------------------------------------------------------------------ rendu d'une image
 def render_frame(fi):
     t = fi / FPS
@@ -210,6 +297,7 @@ def render_frame(fi):
         # ---- Intro : noir, lumière fine, logo
         hl_p = ease_io((t - 0.8) / 1.4)
         hl_a = ease_io((t - 0.8) / 0.9) * (1 - ease_io((t - 2.0) / 0.9))
+        frame += light_shaft(t)
         frame += hairline(hl_p, hl_a)
         la = ease_io((t - 1.7) / 1.3)
         lo = 1 - ease_io((t - 3.55) / 0.7)
@@ -254,6 +342,8 @@ def render_frame(fi):
             lum = img.max(2, keepdims=True)
             img = img + band * (0.25 + 1.4 * lum) * (GOLD / 255.0)[None, None, :] * 0.8
         frame = np.clip(img, 0, 1) * 255.0 * _VIG
+        dl = dust_layer(t, np.ones((SH, SW), np.float32), 120.0)
+        frame = frame + dl[..., None] * (GOLD / 255.0)[None, None, :] * 0.9
         # flash lumineux doré sur la coupe
         if tl < 0.25:
             fl = 0.24 * math.exp(-tl * 24.0)
@@ -282,6 +372,7 @@ def render_frame(fi):
         top = group_cy - total / 2
         logo_cy = top + lh / 2
         txt_cy = top + lh + gap + txt_h / 2
+        frame += ray_layer(tt_)
         la = ease_io((tt_ - 0.4) / 1.2)
         if la > 0.001:
             sw = (tt_ - 2.9) / 1.4 if 2.9 <= tt_ <= 4.3 else None
